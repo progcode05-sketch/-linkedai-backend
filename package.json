@@ -1,0 +1,9 @@
+{
+  "name": "linkedai-backend",
+  "version": "1.0.0",
+  "description": "LinkedAI backend API - Vercel serverless functions",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "stripe": "^14.18.0"
+  }
+}
