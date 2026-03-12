@@ -1,9 +1,8 @@
-const { verifyToken, getProfile, getUsage, incrementUsage } = require('./lib/supabase');
+const { verifyToken, getUsage, incrementUsage } = require('./lib/supabase');
 
 const MONTHLY_LIMIT = 300;
 
 module.exports = async function handler(req, res) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -11,16 +10,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
+    // 1. Verify token
     const user = await verifyToken(req.headers.authorization);
-    const profile = await getProfile(user.id);
 
-    if (profile.subscription_status !== 'pro') {
-      return res.status(403).json({
-        error: 'subscription_required',
-        message: 'Please upgrade to Pro to use LinkedAI.'
-      });
-    }
-
+    // 2. Check usage limit (no Stripe check — manage access manually via Supabase)
     const usage = await getUsage(user.id);
     if (usage >= MONTHLY_LIMIT) {
       return res.status(429).json({
@@ -30,11 +23,13 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // 3. Validate body
     const { systemPrompt, userMessage } = req.body;
     if (!systemPrompt || !userMessage) {
       return res.status(400).json({ error: 'Missing systemPrompt or userMessage' });
     }
 
+    // 4. Call Anthropic with YOUR key
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -55,9 +50,10 @@ module.exports = async function handler(req, res) {
       throw new Error(err?.error?.message || `Anthropic error: ${anthropicRes.status}`);
     }
 
-    const anthropicData = await anthropicRes.json();
-    const result = anthropicData.content?.[0]?.text?.replace(/```json|```/g, '').trim() || '';
+    const data = await anthropicRes.json();
+    const result = data.content?.[0]?.text?.replace(/```json|```/g, '').trim() || '';
 
+    // 5. Increment usage
     await incrementUsage(user.id);
 
     return res.status(200).json({ result, usage: usage + 1, limit: MONTHLY_LIMIT });
